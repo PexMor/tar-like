@@ -111,7 +111,6 @@ if __name__ == "__main__":
         "-l",
         "--last-block",
         action="store",
-        default=0,
         type=int,
         help="Specify last block",
     )
@@ -141,6 +140,8 @@ if __name__ == "__main__":
     total_size = last_info["offset_end"] + 1
     x_blk_size = args.block_size
     no_blocks = int((total_size + x_blk_size - 1) / x_blk_size)
+    if args.last_block is not None:
+        no_blocks = int(args.last_block) + 1
 
     DEFAULT_TAR_ID = 0
     tar_id = DEFAULT_TAR_ID
@@ -153,6 +154,7 @@ if __name__ == "__main__":
     p.map(upload_block, p_arr)
     p.close()
     p.join()
+    print(f"Blocks        : {first_block}..{no_blocks-1}")
     print(f"Total size    : {total_size:,} Bytes")
     print(f"Database path : {db_path}")
     cmds = [".mode table", "SELECT * FROM tar LIMIT 40;"]

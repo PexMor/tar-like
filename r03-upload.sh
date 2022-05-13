@@ -10,4 +10,4 @@ docker run -it --rm \
     -v $PWD:/data/ro:ro \
     -v "$DDIR:/data/rw" \
     tar_like \
-    python3 -mtar_like.upload -u http://172.17.0.1:8000/tar -b /data/ro
+    python3 -mtar_like.upload -u http://172.17.0.1:8000/tar -b /data/ro "$@"
