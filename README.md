@@ -28,6 +28,9 @@ An example how to make an index of this folder:
 python -mtar_like.index -x .git -x __pycache__ -x tmp/ -c
 ```
 
+or dockerized [`./r01-index.sh`](r01-index.sh)
+
+
 * `-x` exclude of some regex pattern matched against the filepath
 * `-c` clean db before inserting values
 
@@ -45,6 +48,8 @@ On the receiving end run:
 python -mtar_like.proxy
 ```
 
+or dockerized [`./r02-proxy.sh`](r02-proxy.sh)
+
 ## Upload
 
 On the sending end run:
@@ -52,6 +57,8 @@ On the sending end run:
 ```bash
 python -mtar_like.upload -f 0 -s 100000
 ```
+
+or dockerized [`./r03-upload.sh`](r03-upload.sh)
 
 where:
 
@@ -65,3 +72,5 @@ To check the checksums of files on filesystem vs in the DB
 ```bash
 python -mtar_like.check
 ```
+
+or dockerized [`./r04_check.sh`](r04_check.sh)
