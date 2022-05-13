@@ -5,7 +5,6 @@
 
 import io
 import json
-import locale
 import logging
 import lz4framed
 import os
@@ -23,8 +22,6 @@ from .. import FileDB
 from datetime import datetime
 from pathlib import Path
 from http.server import SimpleHTTPRequestHandler
-
-locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
 
 ### Beg: Logging config
 logging_level = os.environ.get("LOGLEVEL", "DEBUG")
