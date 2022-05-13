@@ -3,11 +3,17 @@
 set -x
 set -e
 
-DDIR=$PWD/tmp
+: ${SDIR:=$PWD}
+[ -d "$SDIR" ] || exit -1
+
+: ${DDIR:=$PWD/tmp}
 [ -d "$DDIR" ] || mkdir -p "$DDIR"
+
+: ${UDIR:=/data/rw/recv-test}
+
 docker run -it --rm \
     --name tl_upload \
-    -v $PWD:/data/ro:ro \
+    -v "$SDIR:/data/ro:ro" \
     -v "$DDIR:/data/rw" \
     tar_like \
-    python3 -mtar_like.check -b /data/rw/recv-test
+    python3 -mtar_like.check -b "$UDIR"

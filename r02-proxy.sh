@@ -21,12 +21,18 @@ set -e
 # in general the 0.0.0.0 is unsafe !!!
 : ${LOCAL_BIND:=8000}
 
-DDIR=$PWD/tmp
+: ${SDIR:=$PWD}
+[ -d "$SDIR" ] || exit -1
+
+: ${DDIR:=$PWD/tmp}
 [ -d "$DDIR" ] || mkdir -p "$DDIR"
+
+: ${UDIR:=/data/rw/recv-test}
+
 docker run -it --rm \
     --name tl_proxy \
-    -v $PWD:/data/ro:ro \
+    -v "$SDIR:/data/ro:ro" \
     -v "$DDIR:/data/rw" \
     -p ${LOCAL_BIND}:8000 \
     tar_like \
-    python3 -mtar_like.proxy -b /data/rw/recv-test
+    python3 -mtar_like.proxy -b "$UDIR"
