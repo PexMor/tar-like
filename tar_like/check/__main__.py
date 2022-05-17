@@ -50,7 +50,7 @@ if __name__ == "__main__":
     else:
         no_cut = len(base_path.split(os.sep))
     logger.info(f"'{args.base_folder}' -> '{base_path}' (len-1={no_cut})")
-    db = FileDB(db_path)
+    db = FileDB(db_file=db_path)
     
     print(f"--=[ checking Begin: '{base_path}'")
     for row in db.get_all():

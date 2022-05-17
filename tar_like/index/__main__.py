@@ -65,7 +65,7 @@ if __name__ == "__main__":
     logger.info(f"'{args.base_folder}' -> '{base_path}' (len-1={no_cut})")
     hash_res = "dummy"
     r_path = None
-    db = FileDB(db_path, clean_db=args.clean)
+    db = FileDB(db_file=db_path, clean_db=args.clean)
 
     if args.exclude is not None:
         rex = [re.compile(re_str) for re_str in args.exclude]

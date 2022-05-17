@@ -17,3 +17,5 @@ docker run -it --rm \
     -v "$DDIR:/data/rw" \
     tar_like \
     python3 -mtar_like.check -b "$UDIR"
+
+# EOF

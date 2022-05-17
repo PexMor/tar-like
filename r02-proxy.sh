@@ -36,3 +36,5 @@ docker run -it --rm \
     -p ${LOCAL_BIND}:8000 \
     tar_like \
     python3 -mtar_like.proxy -b "$UDIR"
+
+# EOF

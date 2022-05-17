@@ -1,18 +1,21 @@
 #!/usr/bin/python
 
 import argparse
-import logging
-import os
-import io
-import requests
-import os.path
+import boto3
 import functools
+import io
+import logging
 import lz4framed
 import multiprocessing as mp
+import os
+import os.path
+import requests
+import sys
 import urllib3.exceptions
 
+from dataclasses import dataclass
 from typing import List
-from .. import FileDB, BLK_64M, BLK_1K, BLK_10K
+from .. import FileDB, BLK_64M, BLK_1K, BLK_10K, get_data_range, set_use_s3
 
 ### Beg: Logging config
 logging_level = os.environ.get("LOGLEVEL", "DEBUG")
@@ -27,35 +30,46 @@ except IndexError:
     logging.basicConfig(level=logging_level, format=logging_fmt)
 ### End: Logging config
 
+
+@dataclass(frozen=True)
+class DoneBlk:
+    tar_id: int
+    blk_size: int
+    blk_id: int
+
+
+@dataclass(frozen=True)
+class FinishToken:
+    pass
+
+
 db = None
 url_pfx = None
 tar_id = None
 base_path_arr: List[str] = None
 x_blk_size: int = None
+q_blk_done: mp.Queue = None
+ignore_done: bool = False
 
 
-def upload_block(ii):
-    global db, base_path_arr, tar_id
-    res = db.get_block_silent(ii, x_blk_size)
-    io_buffer = io.BytesIO()
-    acc_use = 0
+def upload_db(db_fn):
+    global tar_id
     session = requests.session()
-    for jj, blk in enumerate(res):
-        path_arr = blk["path"].split(os.sep)
-        fpath = (os.sep).join([*base_path_arr, *path_arr])
-        with open(fpath, "rb") as fh:
-            logger.debug(f"{fpath}: {blk['r0s']}..{blk['r1e']} ({blk['use']})")
-            fh.seek(blk["r0s"])
-            io_buffer.write(fh.read(blk["use"]))
-        acc_use += blk["use"]
-    logger.debug(f"{ii:,}:acc_use={acc_use}")
+    io_buffer = io.BytesIO()
+    with open(db_fn, "rb") as fh:
+        io_buffer.write(fh.read())
     compressed = lz4framed.compress(io_buffer.getbuffer())
     io_buffer.close()
-    headers = {"Content-Length": str(len(compressed))}
+    db_compressed_len = len(compressed)
+    headers = {"Content-Length": str(db_compressed_len)}
+    db_upload_url = f"{url_pfx}/{tar_id}/db"
+    logger.info(
+        f"Uploading the DB to {db_upload_url} compressed size {db_compressed_len:,}"
+    )
     try:
-        session.request(
+        resp = session.request(
             method="PUT",
-            url=f"{url_pfx}/{tar_id}/{x_blk_size}/{ii}",
+            url=db_upload_url,
             headers=headers,
             data=compressed,
         )
@@ -63,6 +77,56 @@ def upload_block(ii):
         logger.error("Upload error", ex)
     except requests.exceptions.ConnectionError as ex:
         logger.error("Upload error", ex)
+
+
+def upload_block(blk_id: int):
+    global db, base_path_arr, tar_id, q_blk_done, ignore_done
+    if not ignore_done and db.check_if_done(tar_id, x_blk_size, blk_id):
+        logger.debug(f"Block {blk_id} was already uploaded")
+    else:
+        res = db.get_block_silent(x_blk_size, blk_id)
+        io_buffer = io.BytesIO()
+        acc_use = 0
+        session = requests.session()
+        for jj, blk in enumerate(res):
+            path_arr = blk["path"].split(os.sep)
+            fpath = (os.sep).join([*base_path_arr, *path_arr])
+            logger.debug(f"{fpath}: {blk['r0s']}..{blk['r1e']} ({blk['use']})")
+            get_data_range(fpath, offset=blk["r0s"], data_len=blk["use"], ioh=io_buffer)
+            acc_use += blk["use"]
+        logger.debug(f"{blk_id:,}:acc_use={acc_use}")
+        compressed = lz4framed.compress(io_buffer.getbuffer())
+        io_buffer.close()
+        headers = {"Content-Length": str(len(compressed))}
+        try:
+            resp = session.request(
+                method="PUT",
+                url=f"{url_pfx}/{tar_id}/{x_blk_size}/{blk_id}",
+                headers=headers,
+                data=compressed,
+            )
+            if resp.ok:
+                q_blk_done.put(DoneBlk(tar_id, x_blk_size, blk_id))
+        except urllib3.exceptions.ProtocolError as ex:
+            logger.error("Upload error", ex)
+        except requests.exceptions.ConnectionError as ex:
+            logger.error("Upload error", ex)
+
+
+
+
+
+def get_res(no_processes: int):
+    global q_blk_done, db
+    cnt = no_processes
+    while cnt > 0:
+        res = q_blk_done.get()
+        logger.info(res)
+        if isinstance(res, FinishToken):
+            cnt -= 1
+        elif isinstance(res, DoneBlk):
+            db.save_res(res.tar_id, res.blk_size, res.blk_id)
+    logger.info("Finished consuming results")
 
 
 if __name__ == "__main__":
@@ -76,12 +140,32 @@ if __name__ == "__main__":
         help="Specify base folder",
     )
     parser.add_argument(
+        "--use-s3",
+        action="store_true",
+        default=False,
+        help="Use S3 backend instead of filesystem (incl.HCP)",
+    )
+    parser.add_argument(
+        "--ignore-done",
+        action="store_true",
+        default=False,
+        help="ignore that something was already uploaded",
+    )
+    parser.add_argument(
         "-db",
         "--database",
         action="store",
         default="~/.tar_like.sqlite",
         type=str,
         help="Specify database file (SQLite)",
+    )
+    parser.add_argument(
+        "-dbp",
+        "--database-progress",
+        action="store",
+        default="~/.tar_like_progress.sqlite",
+        type=str,
+        help="Specify database file to track progress (SQLite)",
     )
     parser.add_argument(
         "-u",
@@ -124,8 +208,19 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    DEFAULT_TAR_ID = 0
+    tar_id = DEFAULT_TAR_ID
+    url_pfx = args.upload_url
+    first_block = args.first_block
+    set_use_s3(args.use_s3)
+    ignore_done = args.ignore_done
+    os.environ["NO_PROXY"] = "localhost"
+    mp.set_start_method("fork")
+
     base_path = os.path.normpath(args.base_folder)
     db_path = os.path.abspath(os.path.normpath(os.path.expanduser(args.database)))
+    db_progress_path = os.path.abspath(os.path.normpath(os.path.expanduser(args.database_progress)))
     base_path_arr = base_path.split(os.sep)
     if base_path in [".", os.sep]:
         no_cut = 0
@@ -134,7 +229,8 @@ if __name__ == "__main__":
     logger.info(f"'{args.base_folder}' -> '{base_path}' (len-1={no_cut})")
     hash_res = "dummy"
     r_path = None
-    db = FileDB(db_path)
+    upload_db(db_path)
+    db = FileDB(db_file=db_path,db_progress_file=db_progress_path)
 
     last_info = db.get_last_row_by_id()
     total_size = last_info["offset_end"] + 1
@@ -143,17 +239,18 @@ if __name__ == "__main__":
     if args.last_block is not None:
         no_blocks = int(args.last_block) + 1
 
-    DEFAULT_TAR_ID = 0
-    tar_id = DEFAULT_TAR_ID
-    url_pfx = args.upload_url
-    first_block = args.first_block
-    os.environ["NO_PROXY"] = "localhost"
-    mp.set_start_method("fork")
+    q_blk_done = mp.Queue(100)
+    res_p = mp.Process(target=get_res, args=(args.no_processes,))
+    res_p.start()
     p = mp.Pool(args.no_processes)
     p_arr = list(range(first_block, no_blocks))
     p.map(upload_block, p_arr)
+    logger.info("Finished mapping")
+    for ii in range(0, args.no_processes):
+        q_blk_done.put(FinishToken())
     p.close()
     p.join()
+    res_p.join()
     print(f"Blocks        : {first_block}..{no_blocks-1}")
     print(f"Total size    : {total_size:,} Bytes")
     print(f"Database path : {db_path}")
@@ -162,3 +259,5 @@ if __name__ == "__main__":
     print(f"Sqlite cmd    : sqlite3 '{db_path}' {cmd_str}")
     print(f"No processes  : {args.no_processes}")
     print(f"No blocks     : {no_blocks}")
+    print(f"Ignore done   : {ignore_done}")
+    print(f"Use S3        : {args.use_s3}")

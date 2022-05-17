@@ -1,0 +1,19 @@
+# for HCP the usename has to be BASE64 encoded
+# base64.b64encode(orig_username.encode("UTF-8")).decode("UTF-8")
+AWS_ACCESS_KEY_ID="..."
+export AWS_ACCESS_KEY_ID
+# for HCP the secret/password has to be MD5 hashed
+# hashlib.md5(orig_secret.encode("UTF-8")).hexdigest()
+AWS_SECRET_ACCESS_KEY="..."
+export AWS_SECRET_ACCESS_KEY
+# AWS_CA_BUNDLE=
+# export AWS_CA_BUNDLE
+TARLIKE_S3_BUCKET="iot-pcaps"
+export TARLIKE_S3_BUCKET
+TARLIKE_S3_ENDPOINT="https://..."
+export TARLIKE_S3_ENDPOINT
+TARLIKE_S3_PFX="..."
+export TARLIKE_S3_PFX
+# defaults to True
+# TARLIKE_S3_TLS_VERIFY=
+# export TARLIKE_S3_TLS_VERIFY

@@ -5,7 +5,7 @@ import http.server as SimpleHTTPServer
 
 from asyncio.log import logger
 from . import mkTarRequestHandler
-from .. import FileDB
+# from .. import FileDB
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
