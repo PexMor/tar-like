@@ -232,14 +232,14 @@ class FileDB:
         res = self.cur_progress.execute(SQL, (tar_id, blk_size, blk_id))
 
     def get_all(self):
-        SQL = "SELECT id,path,size,offset,offset_end,hash FROM tar"
+        SQL = "SELECT id,path,size,offset,offset_end,hash FROM tar ORDER BY id"
         db_res = self.cur.execute(SQL)
         return db_res.fetchall()
 
     def get_block_silent(self, blk_size: int, blk_no: int):
         blk_start = blk_no * blk_size
         blk_end = blk_start + blk_size - 1
-        SQL = f"SELECT id,path,size,offset,offset_end,hash FROM tar WHERE offset_end>={blk_start} AND offset<={blk_end}"
+        SQL = f"SELECT id,path,size,offset,offset_end,hash FROM tar WHERE offset_end>={blk_start} AND offset<={blk_end} ORDER BY id"
         rows = self.cur.execute(SQL)
         sum_use = 0
         collect = []
@@ -281,7 +281,7 @@ class FileDB:
         return collect
 
     def get_file_info(self, path: str):
-        SQL = f"SELECT id,path,size,offset,offset_end,hash FROM tar WHERE path=?"
+        SQL = f"SELECT id,path,size,offset,offset_end,hash FROM tar WHERE path=? ORDER BY id"
         rows = self.cur.execute(SQL, (path,))
         info = rows.fetchone()
         return {
