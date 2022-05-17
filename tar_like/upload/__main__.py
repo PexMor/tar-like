@@ -11,14 +11,16 @@ import os
 import os.path
 import requests
 import sys
+import certifi
+import urllib3
 import urllib3.exceptions
 
 from dataclasses import dataclass
 from typing import List
-from .. import FileDB, BLK_64M, BLK_1K, BLK_10K, get_data_range, set_use_s3
+from .. import FileDB, BLK_32M, BLK_16M, BLK_30M, BLK_32M_I, get_data_range, set_use_s3
 
 ### Beg: Logging config
-logging_level = os.environ.get("LOGLEVEL", "DEBUG")
+logging_level = os.environ.get("LOGLEVEL", "INFO")
 logging_fmt = "%(levelname)s:%(name)s:%(message)s"
 logging_fmt = "%(message)s"
 try:
@@ -30,6 +32,8 @@ except IndexError:
     logging.basicConfig(level=logging_level, format=logging_fmt)
 ### End: Logging config
 
+TIMEOUT_SECS: float = 120.0
+
 
 @dataclass(frozen=True)
 class DoneBlk:
@@ -40,6 +44,11 @@ class DoneBlk:
 
 @dataclass(frozen=True)
 class FinishToken:
+    pass
+
+
+@dataclass(frozen=True)
+class AbortOp:
     pass
 
 
@@ -82,7 +91,7 @@ def upload_db(db_fn):
 def upload_block(blk_id: int):
     global db, base_path_arr, tar_id, q_blk_done, ignore_done
     if not ignore_done and db.check_if_done(tar_id, x_blk_size, blk_id):
-        logger.debug(f"Block {blk_id} was already uploaded")
+        logger.info(f"Block {blk_id:,} was already uploaded")
     else:
         res = db.get_block_silent(x_blk_size, blk_id)
         io_buffer = io.BytesIO()
@@ -91,29 +100,31 @@ def upload_block(blk_id: int):
         for jj, blk in enumerate(res):
             path_arr = blk["path"].split(os.sep)
             fpath = (os.sep).join([*base_path_arr, *path_arr])
-            logger.debug(f"{fpath}: {blk['r0s']}..{blk['r1e']} ({blk['use']})")
+            # logger.info(f"{blk_id:,} {fpath}: {blk['r0s']}..{blk['r1e']} ({blk['use']})")
             get_data_range(fpath, offset=blk["r0s"], data_len=blk["use"], ioh=io_buffer)
             acc_use += blk["use"]
         logger.debug(f"{blk_id:,}:acc_use={acc_use}")
-        compressed = lz4framed.compress(io_buffer.getbuffer())
+        compressed = lz4framed.compress(io_buffer.getbuffer().tobytes())
+        len_compressed = len(compressed)
         io_buffer.close()
-        headers = {"Content-Length": str(len(compressed))}
+        headers = {"Content-Length": str(len_compressed)}
         try:
+            logger.info(f"{x_blk_size:,}/{blk_id:,} : {len_compressed:,} B")
             resp = session.request(
                 method="PUT",
                 url=f"{url_pfx}/{tar_id}/{x_blk_size}/{blk_id}",
                 headers=headers,
                 data=compressed,
+                timeout=TIMEOUT_SECS,
             )
             if resp.ok:
                 q_blk_done.put(DoneBlk(tar_id, x_blk_size, blk_id))
         except urllib3.exceptions.ProtocolError as ex:
-            logger.error("Upload error", ex)
+            logger.error("Protocol error")
+            q_blk_done.put(AbortOp())
         except requests.exceptions.ConnectionError as ex:
-            logger.error("Upload error", ex)
-
-
-
+            logger.error("Connection error")
+            q_blk_done.put(AbortOp())
 
 
 def get_res(no_processes: int):
@@ -126,6 +137,8 @@ def get_res(no_processes: int):
             cnt -= 1
         elif isinstance(res, DoneBlk):
             db.save_res(res.tar_id, res.blk_size, res.blk_id)
+        elif isinstance(res, AbortOp):
+            pass
     logger.info("Finished consuming results")
 
 
@@ -202,11 +215,14 @@ if __name__ == "__main__":
         "-s",
         "--block-size",
         action="store",
-        default=BLK_64M,
+        default=BLK_30M,
         type=int,
         help="Specify block size",
     )
 
+    ca_bundle = certifi.where()
+    urllib3.disable_warnings()
+    print(f"CA Cert Bundle: {ca_bundle}")
     args = parser.parse_args()
 
     DEFAULT_TAR_ID = 0
@@ -220,7 +236,9 @@ if __name__ == "__main__":
 
     base_path = os.path.normpath(args.base_folder)
     db_path = os.path.abspath(os.path.normpath(os.path.expanduser(args.database)))
-    db_progress_path = os.path.abspath(os.path.normpath(os.path.expanduser(args.database_progress)))
+    db_progress_path = os.path.abspath(
+        os.path.normpath(os.path.expanduser(args.database_progress))
+    )
     base_path_arr = base_path.split(os.sep)
     if base_path in [".", os.sep]:
         no_cut = 0
@@ -230,7 +248,8 @@ if __name__ == "__main__":
     hash_res = "dummy"
     r_path = None
     upload_db(db_path)
-    db = FileDB(db_file=db_path,db_progress_file=db_progress_path)
+    # sys.exit(0)
+    db = FileDB(db_file=db_path, db_progress_file=db_progress_path)
 
     last_info = db.get_last_row_by_id()
     total_size = last_info["offset_end"] + 1
@@ -240,16 +259,18 @@ if __name__ == "__main__":
         no_blocks = int(args.last_block) + 1
 
     q_blk_done = mp.Queue(100)
+    upload_proc_pool = mp.Pool(args.no_processes)
+
     res_p = mp.Process(target=get_res, args=(args.no_processes,))
     res_p.start()
-    p = mp.Pool(args.no_processes)
+
     p_arr = list(range(first_block, no_blocks))
-    p.map(upload_block, p_arr)
+    upload_proc_pool.map(upload_block, p_arr)
     logger.info("Finished mapping")
     for ii in range(0, args.no_processes):
         q_blk_done.put(FinishToken())
-    p.close()
-    p.join()
+    upload_proc_pool.close()
+    upload_proc_pool.join()
     res_p.join()
     print(f"Blocks        : {first_block}..{no_blocks-1}")
     print(f"Total size    : {total_size:,} Bytes")
@@ -261,3 +282,5 @@ if __name__ == "__main__":
     print(f"No blocks     : {no_blocks}")
     print(f"Ignore done   : {ignore_done}")
     print(f"Use S3        : {args.use_s3}")
+    print(f"SSL_CERT_FILE : {os.getenv('SSL_CERT_FILE')}")
+    print(f"CA Cert Bundle: {ca_bundle}")

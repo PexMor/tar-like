@@ -13,6 +13,13 @@ set -e
 
 # CNET="--network proxy"
 
+: ${EX_PYCACERT:=~/.python-cacert.pem}
+: ${IN_PYCACERT:=/ca-cert.pem}
+
+if [ -f "$EX_PYCACERT" ]; then
+    PYCERT_PARAM="-e SSL_CERT_FILE=$IN_PYCACERT -v $EX_PYCACERT:/ca-cert.pem:ro"
+fi
+
 docker run -it --rm \
     --name tl_upload \
     -e TARLIKE_S3_BUCKET \
@@ -23,6 +30,7 @@ docker run -it --rm \
     -e AWS_CA_BUNDLE \
     -e http_proxy \
     -e https_proxy \
+    $PYCERT_PARAM \
     $CNET \
     -v "$SDIR:/data/ro:ro" \
     -v "$DDIR:/data/rw" \

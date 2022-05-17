@@ -15,6 +15,9 @@ BLK_10K = 10 * UNIT
 BLK_500K = 500 * UNIT
 BLK_1M = 1 * UNIT * UNIT
 BLK_10M = 10 * UNIT * UNIT
+BLK_16M = 16 * UNIT * UNIT
+BLK_30M = 30 * UNIT * UNIT
+BLK_32M = 32 * UNIT * UNIT
 BLK_50M = 50 * UNIT * UNIT
 BLK_64M = 64 * UNIT * UNIT
 UNIT_I = 1024
@@ -22,11 +25,12 @@ BLK_1K_I = 1 * UNIT_I
 BLK_512K_I = 512 * UNIT_I
 BLK_1M_I = 1 * UNIT_I * UNIT_I
 BLK_10M_I = 10 * UNIT_I * UNIT_I
+BLK_32M_I = 32 * UNIT_I * UNIT_I
 BLK_50M_I = 50 * UNIT_I * UNIT_I
 BLK_64M_I = 64 * UNIT_I * UNIT_I
 
 ### Beg: Logging config
-logging_level = os.environ.get("LOGLEVEL", "DEBUG")
+logging_level = os.environ.get("LOGLEVEL", "INFO")
 logging_fmt = "%(levelname)s:%(name)s:%(message)s"
 logging_fmt = "%(message)s"
 try:
@@ -74,6 +78,8 @@ def get_data_range(fpath: str, offset: int, data_len: int, ioh: io.BytesIO):
             # TARLIKE_S3_TLS_VERIFY - to set TLS verify
             # optional environment variables:
             # AWS_CA_BUNDLE - where to find a CA bundle file
+            boto3.set_stream_logger("boto3.resources", logging.ERROR)
+            boto3.set_stream_logger("botocore", logging.ERROR)
             session = boto3.session.Session()
             s3bucket = os.getenv("TARLIKE_S3_BUCKET")
             s3endpoint = os.getenv("TARLIKE_S3_ENDPOINT")
@@ -92,16 +98,17 @@ def get_data_range(fpath: str, offset: int, data_len: int, ioh: io.BytesIO):
             if s3tls_verify is not None:
                 kwargs["verify"] = to_bool(s3tls_verify)
                 logger.info(f"TARLIKE_S3_TLS_VERIFY = {s3tls_verify}")
+            # the virtual is the most important parameter to work with HCP
             s3_config = botocore.client.Config(
                 s3={"addressing_style": "virtual", "payload_signing_enabled": True},
-                signature_version="s3v4",
+                signature_version="s3v4"
             )
             kwargs["config"] = s3_config
             s3rsc = session.resource("s3", **kwargs)
         try:
             obj = s3rsc.Object(s3bucket, fpath)
-            logger.debug(f"is is none: {obj is None}")
-            logger.debug(f"obj: {obj}")
+            # logger.debug(f"is is none: {obj is None}")
+            # logger.debug(f"obj: {obj}")
             logger.debug(f"etag: {obj.e_tag}")
             logger.debug(f"length: {obj.content_length}")
             resp = obj.get(Range="bytes={}-{}".format(offset, offset + data_len - 1))
@@ -132,7 +139,7 @@ def file_hash(fname: str, hash_name: str = "md5", chunk_size: int = 8192):
 
 
 DEFAULT_SRC_DB_PATH = os.path.join(os.getenv("HOME"), ".tar_like.sqlite")
-DEFAULT_PROGRESS_DB_PATH = os.path.join(os.getenv("HOME"), ".tar_like_upload.sqlite")
+DEFAULT_PROGRESS_DB_PATH = os.path.join(os.getenv("HOME"), ".tar_like_progress.sqlite")
 
 
 class FileDB:

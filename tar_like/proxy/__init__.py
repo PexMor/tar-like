@@ -74,22 +74,34 @@ def mkTarRequestHandler(base_path_arr: List[str], a_db_path: str):
                 except Exception as ex:
                     logger.error("db file open", ex)
                 res = db.get_block_silent(tar_blk_size, tar_blk_no)
-                self.send_response(200)
-                io_buf = io.BytesIO()
                 in_len = int(self.headers["Content-Length"])
-                io_buf.write(self.rfile.read(in_len))
-                dec = lz4framed.decompress(io_buf.getbuffer())
-                io_buf.close()
-                for blk in res:
-                    # print("---\n",blk)
-                    blk_path_arr = blk["path"].split(os.sep)
-                    rel_path = (os.sep).join([*self.RECV_PATH_ARR, *blk_path_arr])
-                    pdir = os.path.dirname(rel_path)
-                    Path(pdir).mkdir(parents=True, exist_ok=True)
-                    Path(rel_path).touch()
-                    with open(rel_path, "rb+") as fp:
-                        os.lseek(fp.fileno(), blk["r0s"], os.SEEK_SET)
-                        fp.write(dec[blk["bofs"] : blk["bofs"] + blk["use"]])
+                logger.info(f"{tar_blk_no:,} in len = {in_len:,}")
+                raw_data = self.rfile.read(in_len)
+                len_raw_data = len(raw_data)
+                logger.info(f"Data read: {len_raw_data:,} B")
+                if in_len == len_raw_data:
+                    io_buf = io.BytesIO()
+                    io_buf.write(raw_data)
+                    del(raw_data)
+                    try:
+                        pass
+                        dec = lz4framed.decompress(io_buf.getbuffer())
+                        self.extract_files(res, dec)
+                        del(dec)
+                    except ValueError as err:
+                        io_buf.close()
+                        del(io_buf)
+                        logger.error(
+                            f"decompress error @ {tar_blk_no:,} ({tar_blk_size:,} B)"
+                        )
+                        self.send_error(403, "decompress error")
+                        return
+                    io_buf.close()
+                    del(io_buf)
+                else:
+                    self.send_error(403,"expected and read data are different!")
+                    return
+                self.send_response(200)
                 dur_secs = (datetime.now() - ts_b).total_seconds()
                 logger.info(f"Done: {tar_blk_no:10,} dur: {dur_secs:,}")
                 resp = {
@@ -104,6 +116,19 @@ def mkTarRequestHandler(base_path_arr: List[str], a_db_path: str):
             else:
                 self.send_error(403, "Path not allowed")
             return
+
+        def extract_files(self, res, dec):
+            for blk in res:
+                # print("---\n",blk)
+                # print(f"{blk['id']:,}: {blk['path']}, ofs:{blk['bofs']:,} use: {blk['use']:,}, size:{blk['size']:,} B")
+                blk_path_arr = blk["path"].split(os.sep)
+                rel_path = (os.sep).join([*self.RECV_PATH_ARR, *blk_path_arr])
+                pdir = os.path.dirname(rel_path)
+                Path(pdir).mkdir(parents=True, exist_ok=True)
+                Path(rel_path).touch()
+                with open(rel_path, "rb+") as fp:
+                    os.lseek(fp.fileno(), blk["r0s"], os.SEEK_SET)
+                    fp.write(dec[blk["bofs"] : blk["bofs"] + blk["use"]])
 
         def save_db(self, tar_id):
             self.send_response(200)
