@@ -1,5 +1,7 @@
 # tar-like
 
+![Tar Like Diagram](docs/imgs/tar-like.png)
+
 Folder transfer in tar like fashion. It consists of few components that let the process by streamlined.
 
 * __index phase__ create an index of files to be transfered, capturing their `path`, `size` and `hash` (`md5`)
