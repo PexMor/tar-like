@@ -22,7 +22,17 @@ structure and from the __URL__ provided looks up the segment index, and after de
 
 It is __expected__ that the files __do not change__ during the upload. Otherwise the hashes will not match. As such it is not a problem you can retry, but the delta transfer of not yet considered and/or developed (~_new index,delta computation, new upload, resize or delete files as needed_).
 
-## Index
+## Containerization
+
+The app was for ease of execution and portability also contanerized. It is utilizing [Docker](https://www.docker.com/) for this purpose (but [Podman](https://podman.io/) should do as well).
+
+As a preparation step run the [mkDockerImage.sh](mkDockerImage.sh) to prepare `python:3` based image with dependencies.
+
+> Note on containers: there was spotted an issue while running in docker container, which is most likely caused by too little memory for docker VM. The error can be seen as an error of non matching read and expected (`Content-Length`) block size.
+## Individual steps
+
+Following subsections describes the process from indexing over reception and sending up to optional hash check.
+### Index
 
 An example how to make an index of this folder:
 
@@ -42,7 +52,7 @@ To check the resulting sqlite DB:
 sqlite3 ~/.tar_like.sqlite '.mode table' 'SELECT * FROM tar LIMIT 40;'
 ```
 
-## Proxy
+### Proxy
 
 On the receiving end run:
 
@@ -52,7 +62,7 @@ python -mtar_like.proxy
 
 or dockerized [`./r02-proxy.sh`](r02-proxy.sh)
 
-## Upload
+### Upload
 
 On the sending end run:
 
@@ -67,7 +77,12 @@ where:
 * `-f 0` is the number of first block to send
 * `-s 100000` is the size of block in bytes
 
-## Check
+there is also an alternative that uses __S3__ (or alike interface - i.e. __HCP__ - Hitachi Cloud Platform) as a source of files:
+
+using Docker [`./r05-upload_s3.sh`](r05-upload_s3.sh) it requires some envronment variables see [`.tar_like_rc.example`](.tar_like_rc.example).
+
+
+### Check
 
 To check the checksums of files on filesystem vs in the DB
 
