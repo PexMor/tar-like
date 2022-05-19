@@ -91,3 +91,13 @@ python -mtar_like.check
 ```
 
 or dockerized [`./r04_check.sh`](r04_check.sh)
+
+__TO DOes__:
+
+* add intermediate hash layer, where not __paths__ will be transferred but __hashes__ (i.e. SHA1) and then reverse mapped to files on target machine
+* extend the __hashes__ to __merkle trees__ ([Merkle DAGs: Structuring Data for the Distributed Web](https://proto.school/merkle-dags) and [Merkle Directed Acyclic Graphs](https://docs.ipfs.io/concepts/merkle-dag/#merkle-directed-acyclic-graphs-dags))
+* consider __Rust__, __Go__ or __C++__ for better server/proxy side
+* alternative transports (Wiki:[Tsunami UDP Protocol](https://en.wikipedia.org/wiki/Tsunami_UDP_Protocol) also @ [Source Forge Proj](https://sourceforge.net/projects/tsunami-udp/), [UDP-Based Protocol (UDT)](https://www.haivision.com/resources/streaming-video-definitions/udp-based-protocol-udt/) also @ [Source Forge Web](https://udt.sourceforge.io/) evolution to [SRT - Secure Reliable Transport](https://www.haivision.com/products/srt-secure-reliable-transport/), ref. IBM Aspera FASP or Data Expedition Fast File Transfer)
+* [SyncThing](https://syncthing.net/), [Resilio](https://www.resilio.com/) former __BTSync__ (aka BitTorrent Sync)
+* Multicast [PGM](https://en.wikipedia.org/wiki/Pragmatic_General_Multicast) and [Clonezilla](https://clonezilla.org/show-live-doc-content.php?topic=clonezilla-live/doc/11_lite_server) deprecated: [partimage](https://www.partimage.org/), [fsarchiver](https://www.fsarchiver.org/), [partclone](https://partclone.org/)
+* [rclone](https://en.wikipedia.org/wiki/Rclone) cloud backends
