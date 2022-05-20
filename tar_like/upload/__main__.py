@@ -59,10 +59,11 @@ base_path_arr: List[str] = None
 x_blk_size: int = None
 q_blk_done: mp.Queue = None
 ignore_done: bool = False
+ignore_ca: bool = False
 
 
 def upload_db(db_fn):
-    global tar_id
+    global tar_id, ignore_ca
     session = requests.session()
     io_buffer = io.BytesIO()
     with open(db_fn, "rb") as fh:
@@ -81,6 +82,7 @@ def upload_db(db_fn):
             url=db_upload_url,
             headers=headers,
             data=compressed,
+            verify=not ignore_ca,
         )
     except urllib3.exceptions.ProtocolError as ex:
         logger.error("Upload error", ex)
@@ -89,7 +91,7 @@ def upload_db(db_fn):
 
 
 def upload_block(blk_id: int):
-    global db, base_path_arr, tar_id, q_blk_done, ignore_done
+    global db, base_path_arr, tar_id, q_blk_done, ignore_done, ignore_ca
     if not ignore_done and db.check_if_done(tar_id, x_blk_size, blk_id):
         logger.info(f"Block {blk_id:,} was already uploaded")
     else:
@@ -116,6 +118,7 @@ def upload_block(blk_id: int):
                 headers=headers,
                 data=compressed,
                 timeout=TIMEOUT_SECS,
+                verify=not ignore_ca,
             )
             if resp.ok:
                 q_blk_done.put(DoneBlk(tar_id, x_blk_size, blk_id))
@@ -163,6 +166,12 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="ignore that something was already uploaded",
+    )
+    parser.add_argument(
+        "--ignore-ca",
+        action="store_true",
+        default=False,
+        help="ignore invalid/unverifiable TLS CA",
     )
     parser.add_argument(
         "-db",
@@ -231,6 +240,7 @@ if __name__ == "__main__":
     first_block = args.first_block
     set_use_s3(args.use_s3)
     ignore_done = args.ignore_done
+    ignore_ca = args.ignore_ca
     os.environ["NO_PROXY"] = "localhost"
     mp.set_start_method("fork")
 
@@ -284,3 +294,4 @@ if __name__ == "__main__":
     print(f"Use S3        : {args.use_s3}")
     print(f"SSL_CERT_FILE : {os.getenv('SSL_CERT_FILE')}")
     print(f"CA Cert Bundle: {ca_bundle}")
+    print(f"Ignore CA     : {ignore_ca}")

@@ -11,10 +11,13 @@ set -e
 : ${DDIR:=$PWD/tmp}
 [ -d "$DDIR" ] || mkdir -p "$DDIR"
 
+# CNET="--network proxy"
+
 docker run -it --rm \
     --name tl_upload \
     -v "$SDIR:/data/ro:ro" \
     -v "$DDIR:/data/rw" \
+    $CNET \
     tar_like \
     python3 -mtar_like.upload -u "${UPLOAD_URL}" -b /data/ro "$@"
 
