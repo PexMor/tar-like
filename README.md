@@ -34,6 +34,22 @@ As a preparation step run the [mkDockerImage.sh](mkDockerImage.sh) to prepare `p
 Following subsections describes the process from indexing over reception and sending up to optional hash check.
 ### Index
 
+__CLI Parameters__:
+
+```
+usage: tar_like.index [-h] [-b BASE_FOLDER] [-db DATABASE] [-x EXCLUDE] [-c]
+
+options:
+  -h, --help            show this help message and exit
+  -b BASE_FOLDER, --base-folder BASE_FOLDER
+                        Specify base folder
+  -db DATABASE, --database DATABASE
+                        Specify database file (SQLite)
+  -x EXCLUDE, --exclude EXCLUDE
+                        Exclude regex (repeat as needed)
+  -c, --clean           Clean the DB before inserting
+```
+
 An example how to make an index of this folder:
 
 ```bash
@@ -54,6 +70,22 @@ sqlite3 ~/.tar_like.sqlite '.mode table' 'SELECT * FROM tar LIMIT 40;'
 
 ### Proxy
 
+__CLI Parameters__:
+
+```
+usage: tar_like.proxy [-h] [-b BASE_FOLDER] [-db DATABASE] [port]
+
+positional arguments:
+  port                  Specify alternate port [default: 8000]
+
+options:
+  -h, --help            show this help message and exit
+  -b BASE_FOLDER, --base-folder BASE_FOLDER
+                        Specify base folder
+  -db DATABASE, --database DATABASE
+                        Specify database file (SQLite)
+```
+
 On the receiving end run:
 
 ```bash
@@ -63,6 +95,35 @@ python -mtar_like.proxy
 or dockerized [`./r02-proxy.sh`](r02-proxy.sh)
 
 ### Upload
+
+__CLI Parameters__:
+
+```
+usage: tar_like.upload [-h] [-b BASE_FOLDER] [--use-s3] [--ignore-done] [--ignore-ca] [-db DATABASE] [-dbp DATABASE_PROGRESS] [-u UPLOAD_URL] [-p NO_PROCESSES]
+                       [-f FIRST_BLOCK] [-l LAST_BLOCK] [-s BLOCK_SIZE]
+
+options:
+  -h, --help            show this help message and exit
+  -b BASE_FOLDER, --base-folder BASE_FOLDER
+                        Specify base folder
+  --use-s3              Use S3 backend instead of filesystem (incl.HCP)
+  --ignore-done         ignore that something was already uploaded
+  --ignore-ca           ignore invalid/unverifiable TLS CA
+  -db DATABASE, --database DATABASE
+                        Specify database file (SQLite)
+  -dbp DATABASE_PROGRESS, --database-progress DATABASE_PROGRESS
+                        Specify database file to track progress (SQLite)
+  -u UPLOAD_URL, --upload-url UPLOAD_URL
+                        Specify upload URL base
+  -p NO_PROCESSES, --no-processes NO_PROCESSES
+                        Specify number of processes for upload
+  -f FIRST_BLOCK, --first-block FIRST_BLOCK
+                        Specify first block
+  -l LAST_BLOCK, --last-block LAST_BLOCK
+                        Specify last block
+  -s BLOCK_SIZE, --block-size BLOCK_SIZE
+                        Specify block size
+```
 
 On the sending end run:
 
@@ -84,6 +145,25 @@ using Docker [`./r05-upload_s3.sh`](r05-upload_s3.sh) it requires some envronmen
 
 ### Check
 
+__CLI Parameters__:
+
+```
+usage: tar_like.check [-h] [-b BASE_FOLDER] [-db DATABASE] [-f FIRST_BLOCK] [-l LAST_BLOCK] [-s BLOCK_SIZE]
+
+options:
+  -h, --help            show this help message and exit
+  -b BASE_FOLDER, --base-folder BASE_FOLDER
+                        Specify base folder
+  -db DATABASE, --database DATABASE
+                        Specify database file (SQLite)
+  -f FIRST_BLOCK, --first-block FIRST_BLOCK
+                        Specify first block
+  -l LAST_BLOCK, --last-block LAST_BLOCK
+                        Specify last block
+  -s BLOCK_SIZE, --block-size BLOCK_SIZE
+                        Specify block size
+```
+
 To check the checksums of files on filesystem vs in the DB
 
 ```bash
@@ -91,6 +171,26 @@ python -mtar_like.check
 ```
 
 or dockerized [`./r04_check.sh`](r04_check.sh)
+
+
+## Notes on containerised deployment
+
+The containers are the easiest way of deploying the `tar_like` proxy (and other parts). There are ready made scripts, that can be used. To make things customisable there is a number of variables that can override the default values and behavior as well as number of paramaters tha the individual parts access when run from commandline (including use inside docker) for those see sections `CLI Parameters` above.
+
+The environment variables with their default values as used by the scripts are:
+
+| Name               | Default value                | Purpose                                                                                                                                                                                                          |
+|--------------------|------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `DDIR`             | `$PWD/tmp`                   | Destination directory R/W, stores data as well as the `.tar_like.sqlite`                                                                                                                                         |
+| `EX_PYCACERT`      | `~/.python-cacert.pem`       | the proxy CA bundle (or `--ignore-ca`)                                                                                                                                                                           |
+| `IN_PYCACERT`      | `ca-cert.pem`                | the S3/HCP source CA                                                                                                                                                                                             |
+| `LOCAL_BIND`       | `8000`                       | Where should the docker lister for HTTP access forwarded to port `8000` inside container of `tar_like.proxy`                                                                                                     |
+| `LOCAL_BIND_HTTPS` | `8443`                       | Where should the docker lister for HTTPS access forwarded to port `8443` inside container of `haproxy` which in turn contact the `tar_like.proxy` localy via `127.0.0.1:8000` __inside__ container (same net-ns) |
+| `SDIR`             | `$PWD`                       | source directory, where to look for files to `tar_like.index` and `tar_like.upload` (R/O)                                                                                                                        |
+| `UDIR`             | `/data/rw/recv-test`         | Where to put the uploaded data to the `tar_like.proxy` (R/W) __inside__ container                                                                                                                                |
+| `UPLOAD_URL`       | `http://172.17.0.1:8000/tar` | Used by `tar_like.upload` to know where to contact the `tar_like.proxy`                                                                                                                                          |
+
+> Note: it is expected that in most cased only these variables are to be modified not the config files or scripts. The most frequent modification should be `LOCAL_BIND_HTTPS` eventually `DDIR` along with `SDIR`
 
 __TO DOes__:
 

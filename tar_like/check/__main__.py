@@ -23,7 +23,7 @@ except IndexError:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("tar_like.index")
+    parser = argparse.ArgumentParser("tar_like.check")
     parser.add_argument(
         "-b",
         "--base-folder",

@@ -7,7 +7,7 @@ from asyncio.log import logger
 from . import mkTarRequestHandler
 # from .. import FileDB
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser("tar_like.proxy")
 parser.add_argument(
     "port",
     action="store",
