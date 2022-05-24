@@ -1,6 +1,16 @@
 # tar-like
 
+Below you can find a picture how the data are treated. All existing files are scanned and their size and hash (md5) is collected and put into db which forms a virtula `tar` file of concatenanted files.
+This `tar_like` archive is then virtually split into blocks of arbitrary size and can be transfered over to the receiving side. You can use any number of uploading agents as long as you are able to coordinate them.
+At the time of writing this there is only a naïve way of doing that via the python `multiprocessing.Pool.map` function. Some multihost mechanism should be employed to enable scale-out (i.e. Redis or APMQ).
+
 ![Tar Like Diagram](docs/imgs/tar-like.png)
+
+There is also a process and data-source/sink perspective which is depicted in the second image below. While scale-up i.e. adding more processing on upload side is pretty mature.
+The scale-out to more hosts is possible but there is not mechanism to split the list of blocks to upload across multiple hosts. Also the data-source sharding and collocation might and should be considered.
+At the receiving side the is much more room for improvement. Although the key caviat at the moment is a way to share the __FileDB__ as it is the only shared resource needed for decoding the arriving data/segments.
+
+![How it works](docs/imgs/how-it-works.png)
 
 Folder transfer in tar like fashion. It consists of few components that let the process by streamlined.
 
